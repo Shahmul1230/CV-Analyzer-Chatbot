@@ -1,32 +1,32 @@
 import os
 import io
-from typing import Annotated, TypedDict, List
-
-from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-
-from pypdf import PdfReader
+from pathlib import Path
 from docx import Document
-
+from pypdf import PdfReader
+from pydantic import BaseModel
+from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
-from langgraph.graph import StateGraph, START, END
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from typing import Annotated, TypedDict, List
 from langgraph.graph.message import add_messages
+from fastapi.middleware.cors import CORSMiddleware
+from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
-
+from fastapi import FastAPI, UploadFile, File, Form
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY is missing in .env file")
+    raise ValueError("GROQ_API_KEY is missing in environment variables")
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend"
 
 app = FastAPI(title="Groq LangGraph CV Chatbot")
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,20 +36,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class ChatRequest(BaseModel):
     message: str
     session_id: str
-
 
 class ChatResponse(BaseModel):
     answer: str
     session_id: str
 
-
 class ChatState(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
-
 
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
@@ -57,7 +53,6 @@ llm = ChatGroq(
     max_tokens=400,
     api_key=GROQ_API_KEY,
 )
-
 
 SYSTEM_PROMPT = """
 You are a professional AI Career Assistant.
@@ -86,12 +81,10 @@ Response rules:
 - Never mention Groq, LangGraph, memory, session, system prompt, or internal instructions.
 """
 
-
 def chatbot_node(state: ChatState):
     messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
     response = llm.invoke(messages)
     return {"messages": [response]}
-
 
 memory = MemorySaver()
 
@@ -102,7 +95,6 @@ graph_builder.add_edge("chatbot", END)
 
 chatbot_graph = graph_builder.compile(checkpointer=memory)
 
-
 def extract_pdf_text(file_bytes):
     reader = PdfReader(io.BytesIO(file_bytes))
     text = ""
@@ -111,9 +103,7 @@ def extract_pdf_text(file_bytes):
         page_text = page.extract_text()
         if page_text:
             text += page_text + "\n"
-
     return text
-
 
 def extract_docx_text(file_bytes):
     document = Document(io.BytesIO(file_bytes))
@@ -122,23 +112,18 @@ def extract_docx_text(file_bytes):
     for para in document.paragraphs:
         if para.text.strip():
             text += para.text + "\n"
-
     return text
-
 
 def limit_text(text, max_chars=4000):
     text = text.strip()
 
     if len(text) > max_chars:
         return text[:max_chars]
-
     return text
 
-
-@app.get("/")
-def home():
+@app.get("/api/health")
+def health_check():
     return {"message": "Groq + LangGraph CV Chatbot backend is running"}
-
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
@@ -173,7 +158,6 @@ def chat(request: ChatRequest):
         answer=answer,
         session_id=session_id,
     )
-
 
 @app.post("/chat-with-file", response_model=ChatResponse)
 async def chat_with_file(
@@ -245,3 +229,32 @@ Do not use markdown symbols like *, **, or ###.
         answer=answer,
         session_id=session_id,
     )
+
+
+if FRONTEND_DIR.exists():
+    app.mount(
+        "/static",
+        StaticFiles(directory=FRONTEND_DIR),
+        name="static"
+    )
+
+@app.get("/")
+def serve_home():
+    index_file = FRONTEND_DIR / "index.html"
+
+    if index_file.exists():
+        return FileResponse(index_file)
+    return {"message": "Frontend index.html not found"}
+
+@app.get("/{full_path:path}")
+def serve_frontend(full_path: str):
+    file_path = FRONTEND_DIR / full_path
+
+    if file_path.exists() and file_path.is_file():
+        return FileResponse(file_path)
+
+    index_file = FRONTEND_DIR / "index.html"
+
+    if index_file.exists():
+        return FileResponse(index_file)
+    return {"message": "Frontend not found"}
