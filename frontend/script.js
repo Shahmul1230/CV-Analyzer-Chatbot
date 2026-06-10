@@ -1,6 +1,6 @@
 const API_URL = "http://localhost:8000/chat";
 
-const fileInput = document.getElementById("fileInput");
+
 const chatToggle = document.getElementById("chatToggle");
 const chatPanel = document.getElementById("chatPanel");
 const closeChat = document.getElementById("closeChat");
@@ -9,6 +9,19 @@ const userInput = document.getElementById("userInput");
 const sendBtn = document.getElementById("sendBtn");
 
 const SESSION_KEY = "cv_assistant_session_id";
+
+const fileInput = document.getElementById("fileInput");
+let selectedFileName = "";
+fileInput.addEventListener("change", () => {
+  if (fileInput.files.length > 0) {
+    selectedFileName = fileInput.files[0].name;
+
+    addMessage(
+      `CV uploaded: ${selectedFileName}\nPlease click send to analyze your CV.`,
+      "bot"
+    );
+  }
+});
 
 let sessionId = localStorage.getItem(SESSION_KEY);
 
@@ -50,11 +63,24 @@ document.querySelectorAll("[data-prompt]").forEach((button) => {
 });
 
 async function sendMessage() {
-  const message = userInput.value.trim();
+  let message = userInput.value.trim();
 
-  if (!message) return;
+  const hasFile = fileInput.files.length > 0;
 
-  addMessage(message, "user");
+  if (!message && !hasFile) return;
+
+  if (!message && hasFile) {
+    message = "Please analyze this CV and provide professional ATS-focused feedback.";
+  }
+
+  if (hasFile) {
+    addMessage(
+      `I have uploaded my CV: ${fileInput.files[0].name}\nPlease analyze it professionally.`,
+      "user"
+    );
+  } else {
+    addMessage(message, "user");
+  }
 
   userInput.value = "";
   userInput.style.height = "auto";
@@ -65,7 +91,7 @@ async function sendMessage() {
   try {
     let response;
 
-    if (fileInput.files.length > 0) {
+    if (hasFile) {
       const formData = new FormData();
 
       formData.append("message", message);
@@ -78,6 +104,7 @@ async function sendMessage() {
       });
 
       fileInput.value = "";
+      selectedFileName = "";
     } else {
       response = await fetch(API_URL, {
         method: "POST",

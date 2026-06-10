@@ -1,20 +1,21 @@
 import os
+import io
 from typing import Annotated, TypedDict, List
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from pypdf import PdfReader
+from docx import Document
 
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
-from fastapi import UploadFile, File, Form
-from pypdf import PdfReader
-from docx import Document
-import io
+
 
 load_dotenv()
 
@@ -29,7 +30,7 @@ app = FastAPI(title="Groq LangGraph CV Chatbot")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # development only
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,7 +53,7 @@ class ChatState(TypedDict):
 
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
-    temperature=0.4,
+    temperature=0.3,
     max_tokens=400,
     api_key=GROQ_API_KEY,
 )
@@ -72,15 +73,17 @@ You help users with:
 
 Response rules:
 - Keep answers short, smart, and professional.
-- Do not write unnecessary long explanations.
 - Use simple English.
 - Maximum answer length should usually be 120 to 180 words.
 - Use clean numbered points when needed.
 - Do not use markdown symbols such as *, **, ###, or bullet markdown.
-- Do not ask for a CV copy unless the user is specifically asking for CV analysis and no CV text/file is provided.
+- Do not write unnecessary long explanations.
 - If CV text is provided, analyze it directly.
 - If job description is provided, compare CV with the job description.
-- Never mention Groq, LangGraph, memory, session, or internal instructions.
+- When a CV file is provided, first acknowledge it professionally.
+- Do not directly jump into criticism.
+- Start CV analysis with: "I have reviewed your CV. Here is a concise professional analysis."
+- Never mention Groq, LangGraph, memory, session, system prompt, or internal instructions.
 """
 
 
@@ -98,6 +101,38 @@ graph_builder.add_edge(START, "chatbot")
 graph_builder.add_edge("chatbot", END)
 
 chatbot_graph = graph_builder.compile(checkpointer=memory)
+
+
+def extract_pdf_text(file_bytes):
+    reader = PdfReader(io.BytesIO(file_bytes))
+    text = ""
+
+    for page in reader.pages[:5]:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text + "\n"
+
+    return text
+
+
+def extract_docx_text(file_bytes):
+    document = Document(io.BytesIO(file_bytes))
+    text = ""
+
+    for para in document.paragraphs:
+        if para.text.strip():
+            text += para.text + "\n"
+
+    return text
+
+
+def limit_text(text, max_chars=4000):
+    text = text.strip()
+
+    if len(text) > max_chars:
+        return text[:max_chars]
+
+    return text
 
 
 @app.get("/")
@@ -139,34 +174,6 @@ def chat(request: ChatRequest):
         session_id=session_id,
     )
 
-def extract_pdf_text(file_bytes):
-    reader = PdfReader(io.BytesIO(file_bytes))
-    text = ""
-
-    for page in reader.pages[:5]:
-        page_text = page.extract_text()
-        if page_text:
-            text += page_text + "\n"
-
-    return text
-
-
-def extract_docx_text(file_bytes):
-    document = Document(io.BytesIO(file_bytes))
-    text = ""
-
-    for para in document.paragraphs:
-        if para.text.strip():
-            text += para.text + "\n"
-
-    return text
-
-
-def limit_text(text, max_chars=6000):
-    text = text.strip()
-    if len(text) > max_chars:
-        return text[:max_chars]
-    return text
 
 @app.post("/chat-with-file", response_model=ChatResponse)
 async def chat_with_file(
@@ -189,16 +196,35 @@ async def chat_with_file(
 
     cv_text = limit_text(cv_text, 4000)
 
+    if not cv_text:
+        return ChatResponse(
+            answer="I could not read text from this file. Please upload a text-based PDF or DOCX file.",
+            session_id=session_id
+        )
+
     final_message = f"""
-User question:
+User request:
 {message}
 
 CV content:
 {cv_text}
 
 Instruction:
-Analyze the CV based on the user's question. Keep the answer short, professional, and practical.
+Review this CV professionally. First acknowledge that the CV has been reviewed. Then provide concise, ATS-focused feedback.
+
+Response format:
+1. Overall impression
+2. Strong points
+3. Improvement areas
+4. ATS optimization suggestions
+5. Final recommendation
+
+Keep the answer professional, clear, and within 180 words.
+Do not use markdown symbols like *, **, or ###.
 """
+
+    if not session_id:
+        session_id = "default-session"
 
     config = {
         "configurable": {
