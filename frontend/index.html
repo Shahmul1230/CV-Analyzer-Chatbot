@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI CV Assistant</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <main class="page">
+    <section class="hero-card">
+      <h1>AI CV Assistant</h1>
+      <p>
+        Ask questions about CV improvement, ATS score, job description matching,
+        job search, LinkedIn profile, cover letter, and interview preparation.
+      </p>
+    </section>
+  </main>
+
+  <div class="chat-widget">
+    <button class="chat-toggle" id="chatToggle">
+      <span>💬</span>
+      <span class="notification-dot"></span>
+    </button>
+
+    <section class="chat-panel" id="chatPanel">
+      <header class="chat-header">
+        <div class="assistant-profile">
+          <div class="avatar">🤖</div>
+          <div>
+            <h3>AI CV Assistant</h3>
+            <p><span class="online-dot"></span> Online • AI Career Assistant</p>
+          </div>
+        </div>
+
+        <button class="close-btn" id="closeChat">×</button>
+      </header>
+
+      <div class="chat-body" id="chatBody">
+        <div class="welcome-card">
+          <h4>Hello! 👋</h4>
+          <p>
+            Ask me anything about CV improvement, ATS score, job matching, cover letters, LinkedIn profile, or interview preparation.
+          </p>
+
+          <div class="example-prompts">
+            <button data-prompt="How can I improve my ATS score?">
+              Improve ATS Score
+            </button>
+
+            <button data-prompt="Write a professional summary for a junior frontend developer.">
+              Write CV Summary
+            </button>
+
+            <button data-prompt="How can I match my CV with a job description?">
+              Match CV with JD
+            </button>
+
+            <button data-prompt="How should I explain my project in an interview?">
+              Interview Help
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <footer class="chat-footer">
+        <label class="file-upload-btn">
+          📎
+           <input type="file" id="fileInput" accept=".pdf,.docx" hidden />
+        </label>
+        
+        <textarea
+          id="userInput"
+          rows="1"
+          placeholder="Ask anything about CV, ATS, jobs..."
+        ></textarea>
+
+        <button id="sendBtn">➤</button>
+      </footer>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
