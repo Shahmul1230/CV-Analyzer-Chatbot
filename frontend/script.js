@@ -1,5 +1,5 @@
-const API_URL = "http://localhost:8000/chat";
-
+const API_URL = "/chat";
+const FILE_API_URL = "/chat-with-file";
 
 const chatToggle = document.getElementById("chatToggle");
 const chatPanel = document.getElementById("chatPanel");
@@ -7,11 +7,18 @@ const closeChat = document.getElementById("closeChat");
 const chatBody = document.getElementById("chatBody");
 const userInput = document.getElementById("userInput");
 const sendBtn = document.getElementById("sendBtn");
+const fileInput = document.getElementById("fileInput");
 
 const SESSION_KEY = "cv_assistant_session_id";
 
-const fileInput = document.getElementById("fileInput");
 let selectedFileName = "";
+let sessionId = localStorage.getItem(SESSION_KEY);
+
+if (!sessionId) {
+  sessionId = crypto.randomUUID();
+  localStorage.setItem(SESSION_KEY, sessionId);
+}
+
 fileInput.addEventListener("change", () => {
   if (fileInput.files.length > 0) {
     selectedFileName = fileInput.files[0].name;
@@ -22,13 +29,6 @@ fileInput.addEventListener("change", () => {
     );
   }
 });
-
-let sessionId = localStorage.getItem(SESSION_KEY);
-
-if (!sessionId) {
-  sessionId = crypto.randomUUID();
-  localStorage.setItem(SESSION_KEY, sessionId);
-}
 
 chatToggle.addEventListener("click", () => {
   chatPanel.style.display = "flex";
@@ -64,7 +64,6 @@ document.querySelectorAll("[data-prompt]").forEach((button) => {
 
 async function sendMessage() {
   let message = userInput.value.trim();
-
   const hasFile = fileInput.files.length > 0;
 
   if (!message && !hasFile) return;
@@ -98,7 +97,7 @@ async function sendMessage() {
       formData.append("session_id", sessionId);
       formData.append("file", fileInput.files[0]);
 
-      response = await fetch("http://localhost:8000/chat-with-file", {
+      response = await fetch(FILE_API_URL, {
         method: "POST",
         body: formData
       });
@@ -118,7 +117,15 @@ async function sendMessage() {
       });
     }
 
-    const data = await response.json();
+    let data;
+
+    try {
+      data = await response.json();
+    } catch {
+      data = {
+        answer: "Server returned an invalid response. Please check Render logs."
+      };
+    }
 
     typingElement.remove();
 
@@ -132,7 +139,7 @@ async function sendMessage() {
     typingElement.remove();
 
     addMessage(
-      "Sorry, I could not connect to the chatbot server. Please make sure the backend is running.",
+      "Sorry, I could not connect to the chatbot server. Please check if the Render Web Service is running.",
       "bot"
     );
   } finally {
@@ -189,7 +196,6 @@ function showTyping() {
   `;
 
   chatBody.appendChild(typingDiv);
-
   scrollToBottom();
 
   return typingDiv;
